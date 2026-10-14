@@ -1,0 +1,18 @@
+# Secretos: nunca subir
+*.key
+*.pem
+.env
+token*
+*.secret
+
+# Datos de ejecución
+db/
+*.log
+*.tmp
+*.backup
+*.bak
+
+# Editor / sistema
+.vscode/
+.DS_Store
+Thumbs.db
