@@ -6,8 +6,8 @@ conexiones), túneles y Xray en un VPS Debian/Ubuntu.
 ## Instalar
 
 ```bash
-git clone https://github.com/TU_USUARIO/nexora.git
-cd nexora
+git clone https://github.com/FireXar/Nexora.git
+cd Nexora
 bash install.sh
 nexora
 ```
