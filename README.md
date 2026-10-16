@@ -19,6 +19,7 @@ nexora
 | Usuarios SSH | Crear, eliminar, renovar, límite, bloquear, listar, conectados, limpiar expirados |
 | Servicios | Dropbear, Stunnel (SSL), proxy WebSocket → SSH, puerto SSH, banner, estado |
 | Xray (VLESS) | Instala Xray con checksum verificado, clientes con vencimiento, enlaces `vless://` |
+| Panel | Cabecera con IP, RAM, disco, CPU, usuarios online, alertas de vencimiento y estado de servicios |
 | Sistema | Info, BBR, swap, update, limpieza automática, actualizar desde GitHub, desinstalar |
 
 ## Estructura

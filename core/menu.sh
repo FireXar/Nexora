@@ -2,7 +2,7 @@
 # Menú principal. Se ejecuta con el comando definido en APP_ID (ej: nexora)
 
 CORE_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-for f in config ui users services system; do
+for f in config ui users services system dashboard; do
     # shellcheck source=/dev/null
     source "$CORE_DIR/$f.sh"
 done
@@ -24,13 +24,15 @@ main_menu() {
     local o
     while true; do
         banner
-        echo -e " ${G}1)${W} Usuarios SSH"
-        echo -e " ${G}2)${W} Servicios (Dropbear · SSL · WebSocket)"
-        echo -e " ${G}3)${W} Xray (VLESS)"
-        echo -e " ${G}4)${W} Sistema"
-        echo -e " ${G}0)${W} Salir"
+        draw_dashboard
+        item 1 "Usuarios SSH"  "crear · renovar · límites"
+        item 2 "Servicios"     "Dropbear · SSL · WebSocket"
+        item 3 "Xray (VLESS)"  "clientes y enlaces"
+        item 4 "Sistema"       "info · BBR · swap · updates"
+        item 0 "Salir"
         line
-        read -rp " Opción: " o
+        echo -ne " ${Y}❯${W} Opción: "
+        read -r o
         case $o in
             1) menu_users;;
             2) menu_services;;

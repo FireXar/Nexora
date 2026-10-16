@@ -3,8 +3,10 @@
 # ==========================================================
 APP_NAME="Nexora"
 APP_ID="nexora"
-APP_VER="1.1.0"
+APP_VER="1.2.0"
 APP_AUTHOR="FireXar"
+APP_TITLE="Bienvenido a ${APP_NAME} VPS Script"   # texto del banner
+APP_BANNER="text"          # "text" = título con emojis · "figlet" = letras grandes
 
 # Repo desde donde se actualiza (opción "Actualizar" del menú Sistema)
 APP_REPO="https://github.com/FireXar/Nexora.git"
