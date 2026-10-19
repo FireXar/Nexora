@@ -17,7 +17,7 @@ nexora
 | Menú | Función |
 |---|---|
 | Usuarios SSH | Crear, eliminar, renovar, límite, bloquear, listar, conectados, limpiar expirados |
-| Servicios | Dropbear, Stunnel (SSL), proxy WebSocket → SSH, puerto SSH, banner, estado |
+| Servicios | Lista con estado [ON]/[OFF]: Ajustes SSH, Dropbear, Socks WS (Python), Stunnel SSL, Xray, BadVPN-UDPGW y Squid restringido. Cada uno con instalar, iniciar/detener, reiniciar y desinstalar |
 | Xray (VLESS) | Instala Xray con checksum verificado, clientes con vencimiento, enlaces `vless://` |
 | Panel | Cabecera con IP, RAM, disco, CPU, usuarios online, alertas de vencimiento y estado de servicios |
 | Sistema | Info, BBR, swap, update, limpieza automática, actualizar desde GitHub, desinstalar |
@@ -34,6 +34,14 @@ NOTICE.md           software de terceros que se instala (no se redistribuye)
 ## Configuración de marca
 
 Todo en `core/config.sh`: `APP_NAME`, `APP_ID`, `APP_AUTHOR` y `APP_REPO`.
+
+## Agregar un servicio al menú
+
+1. Crea `modules/miservicio.sh` con `miservicio_install`, `miservicio_remove` y
+   `miservicio_menu() { svc_generic_menu "ETIQUETA" "unidad-systemd" miservicio_install miservicio_remove; }`.
+2. Agrega una línea en `svc_registry` de `core/services.sh`:
+   `id|ETIQUETA|unidad-systemd|miservicio_menu`
+3. Aparece solo en la lista con su estado [ON]/[OFF].
 
 ## Agregar un módulo
 

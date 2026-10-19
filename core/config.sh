@@ -3,7 +3,7 @@
 # ==========================================================
 APP_NAME="Nexora"
 APP_ID="nexora"
-APP_VER="1.2.0"
+APP_VER="1.3.0"
 APP_AUTHOR="FireXar"
 APP_TITLE="Bienvenido a ${APP_NAME} VPS Script"   # texto del banner
 APP_BANNER="text"          # "text" = título con emojis · "figlet" = letras grandes

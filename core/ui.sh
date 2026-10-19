@@ -77,6 +77,14 @@ item() {
     fi
 }
 
+# ¿El puerto TCP está ocupado por otro programa distinto de <proceso>?
+port_busy() {   # port_busy <puerto> [proceso_permitido]
+    ss -tlnp 2>/dev/null | awk -v p=":$1" -v ok="${2:-@@none@@}" \
+        '$4 ~ (p "$") && $0 !~ ok { f = 1 } END { exit !f }'
+}
+
+confirm_si() { read -rp " Escribe SI para confirmar: " _c; [[ "$_c" == "SI" ]]; }
+
 # Abre un puerto solo si ufw está activo (no lo activa por ti: evita quedarte fuera)
 open_port() {
     if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then

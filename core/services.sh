@@ -1,5 +1,12 @@
+# ==========================================================
+#  Servicios: instaladores + menú con estado ON/OFF
+# ==========================================================
+
+svc_on() { systemctl is-active --quiet "$1" 2>/dev/null; }
+
+# ---------- Dropbear ----------
 svc_dropbear() {
-    header "DROPBEAR"
+    header "DROPBEAR · INSTALAR"
     read -rp " Puerto [443]: " p; p=${p:-443}
     is_num "$p" || { err "Puerto inválido"; pause; return; }
     apt-get install -y dropbear >/dev/null 2>&1
@@ -11,12 +18,19 @@ svc_dropbear() {
     fi
     systemctl enable dropbear >/dev/null 2>&1; systemctl restart dropbear
     open_port "$p"
-    systemctl is-active --quiet dropbear && ok "Dropbear activo en el puerto $p" || err "No pudo iniciar"
+    svc_on dropbear && ok "Dropbear activo en el puerto $p" || err "No pudo iniciar"
     pause
 }
+svc_dropbear_remove() {
+    header "DROPBEAR · DESINSTALAR"; confirm_si || return
+    systemctl disable --now dropbear 2>/dev/null
+    apt-get remove -y dropbear >/dev/null 2>&1
+    ok "Dropbear desinstalado"; pause
+}
 
+# ---------- Stunnel (SSL) ----------
 svc_stunnel() {
-    header "STUNNEL (SSL → SSH)"
+    header "STUNNEL · INSTALAR (SSL → SSH)"
     read -rp " Puerto SSL público [8443]: " p; p=${p:-8443}
     read -rp " Puerto SSH destino   [22]: " d; d=${d:-22}
     is_num "$p" && is_num "$d" || { err "Puerto inválido"; pause; return; }
@@ -35,18 +49,23 @@ EOF
     sed -i 's/^ENABLED=.*/ENABLED=1/' /etc/default/stunnel4 2>/dev/null
     systemctl enable stunnel4 >/dev/null 2>&1; systemctl restart stunnel4
     open_port "$p"
-    systemctl is-active --quiet stunnel4 && ok "Stunnel activo: $p → $d" || err "No pudo iniciar"
+    svc_on stunnel4 && ok "Stunnel activo: $p → $d" || err "No pudo iniciar"
     pause
 }
+svc_stunnel_remove() {
+    header "STUNNEL · DESINSTALAR"; confirm_si || return
+    systemctl disable --now stunnel4 2>/dev/null
+    rm -f /etc/stunnel/${APP_ID}.conf /etc/stunnel/${APP_ID}.pem
+    ok "Configuración de Stunnel eliminada"; pause
+}
 
+# ---------- Proxy WebSocket → SSH ----------
 svc_ws() {
-    header "PROXY WEBSOCKET → SSH"
+    header "SOCKS WS · INSTALAR (WebSocket → SSH)"
     read -rp " Puerto público [80]: " p; p=${p:-80}
     read -rp " Puerto SSH destino [22]: " d; d=${d:-22}
     is_num "$p" && is_num "$d" || { err "Puerto inválido"; pause; return; }
-    if ss -tln | awk '{print $4}' | grep -q ":$p\$"; then
-        err "El puerto $p ya está en uso"; pause; return
-    fi
+    if port_busy "$p" python3; then err "El puerto $p ya está en uso"; pause; return; fi
     cat > /etc/systemd/system/${APP_ID}-ws.service <<EOF
 [Unit]
 Description=${APP_NAME} WebSocket proxy
@@ -61,11 +80,19 @@ WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
     systemctl enable --now ${APP_ID}-ws >/dev/null 2>&1
+    systemctl restart ${APP_ID}-ws
     open_port "$p"
-    systemctl is-active --quiet ${APP_ID}-ws && ok "WebSocket activo: $p → $d" || err "No pudo iniciar"
+    svc_on ${APP_ID}-ws && ok "WebSocket activo: $p → $d" || err "No pudo iniciar"
     pause
 }
+svc_ws_remove() {
+    header "SOCKS WS · DESINSTALAR"; confirm_si || return
+    systemctl disable --now ${APP_ID}-ws 2>/dev/null
+    rm -f /etc/systemd/system/${APP_ID}-ws.service
+    systemctl daemon-reload; ok "Proxy WebSocket eliminado"; pause
+}
 
+# ---------- Ajustes SSH ----------
 svc_ssh_port() {
     header "CAMBIAR PUERTO SSH"
     read -rp " Nuevo puerto: " p
@@ -76,7 +103,6 @@ svc_ssh_port() {
     warn "Prueba conectarte al nuevo puerto ANTES de cerrar esta sesión."
     pause
 }
-
 svc_banner() {
     header "BANNER SSH"
     read -rp " Texto del banner: " t
@@ -88,36 +114,115 @@ svc_banner() {
     fi
     restart_ssh; ok "Banner aplicado"; pause
 }
-
 svc_status() {
-    header "ESTADO DE SERVICIOS"
+    header "ESTADO DE SERVICIOS Y PUERTOS"
     local s st
-    for s in ssh sshd dropbear stunnel4 ${APP_ID}-ws; do
-        systemctl list-unit-files 2>/dev/null | grep -q "^$s.service" || continue
-        if systemctl is-active --quiet "$s"; then st="${G}● activo${W}"; else st="${R}● inactivo${W}"; fi
-        printf " %-16s %b\n" "$s" "$st"
+    for s in ssh sshd dropbear stunnel4 squid ${APP_ID}-ws ${APP_ID}-xray ${APP_ID}-badvpn; do
+        unit_exists "$s" || continue
+        if svc_on "$s"; then st="${G}● activo${W}"; else st="${R}● inactivo${W}"; fi
+        printf " %-18s %b\n" "$s" "$st"
     done
     echo; echo -e " ${Y}Puertos en escucha:${W}"
     ss -tlnp 2>/dev/null | awk 'NR>1{split($4,a,":"); print "  " a[length(a)] "  " $6}' | sort -n -u
     pause
 }
-
-menu_services() {
+svc_ssh_menu() {
     local o
     while true; do
-        header "SERVICIOS"
-        echo -e " ${G}1)${W} Instalar Dropbear"
-        echo -e " ${G}2)${W} Instalar Stunnel (SSL)"
-        echo -e " ${G}3)${W} Proxy WebSocket"
-        echo -e " ${G}4)${W} Cambiar puerto SSH"
-        echo -e " ${G}5)${W} Banner SSH"
-        echo -e " ${G}6)${W} Estado de servicios y puertos"
-        echo -e " ${G}0)${W} Volver"; line
-        read -rp " Opción: " o
+        header "AJUSTES SSH"
+        item 1 "Cambiar puerto SSH"
+        item 2 "Banner SSH"
+        item 3 "Estado de servicios y puertos"
+        item 0 "Volver"; line
+        echo -ne " ${Y}❯${W} Opción: "; read -r o
+        case $o in 1) svc_ssh_port;; 2) svc_banner;; 3) svc_status;; 0) return;; esac
+    done
+}
+
+# ---------- Submenú genérico (instalar · iniciar/detener · reiniciar · desinstalar) ----------
+svc_toggle() {
+    if svc_on "$1"; then systemctl stop "$1" && warn "Detenido"
+    else systemctl start "$1" && ok "Iniciado"; fi
+    sleep 1
+}
+svc_generic_menu() {   # svc_generic_menu <ETIQUETA> <unidad> <fn_instalar> <fn_desinstalar>
+    local label="$1" unit="$2" inst="$3" rem="$4" o st
+    while true; do
+        header "$label"
+        if svc_on "$unit"; then st="${G}● ACTIVO${W}"
+        elif unit_exists "$unit"; then st="${R}● DETENIDO${W}"
+        else st="${Y}no instalado${W}"; fi
+        echo -e " Estado: $st"; thin
+        item 1 "Instalar / reconfigurar"
+        item 2 "Iniciar o detener"
+        item 3 "Reiniciar"
+        item 4 "Desinstalar"
+        item 0 "Volver"; line
+        echo -ne " ${Y}❯${W} Opción: "; read -r o
         case $o in
-            1) svc_dropbear;; 2) svc_stunnel;; 3) svc_ws;;
-            4) svc_ssh_port;; 5) svc_banner;; 6) svc_status;;
+            1) "$inst";;
+            2|3) if unit_exists "$unit"; then
+                     if [[ $o == 2 ]]; then svc_toggle "$unit"; else systemctl restart "$unit" && ok "Reiniciado"; sleep 1; fi
+                 else err "Instálalo primero"; sleep 1; fi;;
+            4) "$rem";;
             0) return;;
         esac
+    done
+}
+svc_dropbear_menu() { svc_generic_menu "DROPBEAR" dropbear svc_dropbear svc_dropbear_remove; }
+svc_stunnel_menu()  { svc_generic_menu "STUNNEL (SSL)" stunnel4 svc_stunnel svc_stunnel_remove; }
+svc_ws_menu()       { svc_generic_menu "SOCKS WS (PYTHON)" "${APP_ID}-ws" svc_ws svc_ws_remove; }
+
+# ---------- Registro de servicios (agrega una línea para sumar uno nuevo) ----------
+#  id | etiqueta (máx. 15) | unidad systemd | función que abre su menú
+svc_registry() {
+cat <<EOF
+ssh|AJUSTES SSH|$(ssh_unit)|svc_ssh_menu
+dropbear|DROPBEAR|dropbear|svc_dropbear_menu
+ws|SOCKS WS|${APP_ID}-ws|svc_ws_menu
+stunnel|STUNNEL (SSL)|stunnel4|svc_stunnel_menu
+xray|V2RAY/XRAY|${APP_ID}-xray|menu_xray
+badvpn|BADVPN-UDPGW|${APP_ID}-badvpn|badvpn_menu
+squid|SQUID|squid|squid_menu
+EOF
+}
+
+svc_cell() {   # svc_cell <numero> <etiqueta> <unidad>   (sin salto de línea)
+    local st
+    if svc_on "$3"; then st="${G}[ON] ${W}"; else st="${R}[OFF]${W}"; fi
+    printf " ${C}[%s]${W} %-15s %b" "$1" "$2" "$st"
+}
+
+menu_services() {
+    local ids=() labels=() units=() handlers=()
+    local id label unit handler n half i j o
+    while IFS='|' read -r id label unit handler; do
+        [[ -z "$id" ]] && continue
+        declare -F "$handler" >/dev/null || continue     # si el módulo no está, no se muestra
+        ids+=("$id"); labels+=("$label"); units+=("$unit"); handlers+=("$handler")
+    done < <(svc_registry)
+    n=${#ids[@]}
+
+    while true; do
+        header "SERVICIOS"
+        if (( $(ui_width) >= 54 )); then          # PC: dos columnas
+            half=$(( (n + 1) / 2 ))
+            for (( i = 0; i < half; i++ )); do
+                svc_cell $((i+1)) "${labels[i]}" "${units[i]}"
+                j=$(( i + half ))
+                if (( j < n )); then svc_cell $((j+1)) "${labels[j]}" "${units[j]}"; fi
+                echo
+            done
+        else                                       # celular: una columna
+            for (( i = 0; i < n; i++ )); do
+                svc_cell $((i+1)) "${labels[i]}" "${units[i]}"; echo
+            done
+        fi
+        line
+        item 0 "Volver"
+        line
+        echo -ne " ${Y}❯${W} Ingresa una opción: "; read -r o
+        [[ "$o" == "0" ]] && return
+        if is_num "$o" && (( o >= 1 && o <= n )); then "${handlers[o-1]}"; fi
     done
 }
