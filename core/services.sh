@@ -179,7 +179,7 @@ svc_registry() {
 cat <<EOF
 ssh|AJUSTES SSH|$(ssh_unit)|svc_ssh_menu
 dropbear|DROPBEAR|dropbear|svc_dropbear_menu
-ws|SOCKS WS|${APP_ID}-ws|svc_ws_menu
+ws|SOCKS PYTHON|${APP_ID}-ws|svc_ws_menu
 stunnel|STUNNEL (SSL)|stunnel4|svc_stunnel_menu
 xray|V2RAY/XRAY|${APP_ID}-xray|menu_xray
 badvpn|BADVPN-UDPGW|${APP_ID}-badvpn|badvpn_menu
