@@ -8,7 +8,11 @@ for f in config ui users services system dashboard; do
 done
 
 # Módulos extra: cualquier .sh en modules/ se carga automáticamente
-for m in "$MOD_DIR"/*.sh; do [[ -f "$m" ]] && source "$m"; done
+for m in "$MOD_DIR"/*.sh; do
+    [[ -f "$m" ]] || continue
+    [[ "$(basename "$m")" == "badvpn-run.sh" ]] && continue
+    source "$m"
+done
 
 [[ $EUID -ne 0 ]] && { echo "Ejecuta como root (sudo -i)."; exit 1; }
 mkdir -p "$DB_DIR"; touch "$USERS_DB" "$XRAY_DB"

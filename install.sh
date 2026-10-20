@@ -17,7 +17,7 @@ esac
 echo ">> Instalando dependencias..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl wget git unzip net-tools iproute2 procps cron openssl python3 figlet ca-certificates
+apt-get install -y curl wget git unzip net-tools iproute2 procps cron openssl python3 figlet ca-certificates cmake build-essential
 
 echo ">> Copiando $APP_NAME a $APP_DIR ..."
 mkdir -p "$APP_DIR/core" "$APP_DIR/modules" "$DB_DIR"

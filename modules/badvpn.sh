@@ -21,9 +21,41 @@ badvpn_install() {
         apt-get install -y badvpn >/dev/null 2>&1
     fi
     if ! command -v badvpn-udpgw >/dev/null 2>&1; then
-        err "El paquete 'badvpn' no está disponible en los repositorios de este sistema."
-        warn "Alternativa: compilarlo desde github.com/ambrop72/badvpn (lo agregamos si lo necesitas)."
-        pause; return
+        header "BADVPN-UDPGW - COMPILAR"
+        local build_root
+        if ! command -v git >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1; then
+            echo " Instalando herramientas de compilacion..."
+            apt-get update -y && apt-get install -y git cmake build-essential
+            if [[ $? -ne 0 ]]; then
+                err "No se pudieron instalar las herramientas necesarias."
+                pause; return
+            fi
+        fi
+
+        build_root="$(mktemp -d /usr/local/src/nexora-badvpn.XXXXXX)" || {
+            err "No se pudo crear la carpeta temporal."
+            pause; return
+        }
+
+        echo " Descargando el codigo oficial de BadVPN..."
+        if ! git clone --depth 1 https://github.com/ambrop72/badvpn.git "$build_root/source"; then
+            rm -rf -- "$build_root"
+            err "No se pudo descargar BadVPN."
+            pause; return
+        fi
+
+        echo " Configurando y compilando BadVPN..."
+        if ! cmake -S "$build_root/source" -B "$build_root/build" -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 ||
+           ! cmake --build "$build_root/build" --parallel 1 ||
+           [[ ! -x "$build_root/build/udpgw/badvpn-udpgw" ]] ||
+           ! install -m 755 "$build_root/build/udpgw/badvpn-udpgw" /usr/local/bin/badvpn-udpgw; then
+            rm -rf -- "$build_root"
+            err "Fallo la compilacion de BadVPN."
+            pause; return
+        fi
+
+        rm -rf -- "$build_root"
+        ok "BadVPN se compilo e instalo correctamente."
     fi
 
     echo "$ports" > "$BADVPN_PORTS"; chmod 644 "$BADVPN_PORTS"
