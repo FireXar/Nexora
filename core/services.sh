@@ -184,6 +184,8 @@ stunnel|STUNNEL (SSL)|stunnel4|svc_stunnel_menu
 xray|V2RAY/XRAY|${APP_ID}-xray|menu_xray
 badvpn|BADVPN-UDPGW|${APP_ID}-badvpn|badvpn_menu
 squid|SQUID|squid|squid_menu
+hcr|HCR CUSTOM|hcr-server|hcr_menu
+bhttp|BHTTP TUNNEL|${APP_ID}-bhttp|bhttp_menu
 EOF
 }
 
