@@ -1,10 +1,12 @@
 # ==========================================================
 #  Módulo BHTTP (relé para DTunnel)
 #
-#  Nexora NO incluye ni redistribuye ese código. Vos ponés la carpeta del
-#  código fuente (bilola_go_port) en el VPS; el módulo la revisa por arriba,
-#  la COMPILA en tu servidor con Go oficial (huella verificada) y corre el
-#  resultado como usuario sin privilegios.
+#  - El código fuente se descarga solo desde el repositorio de su autor y se
+#    compara con la huella del código que revisamos. Si cambió, te avisa.
+#  - Se COMPILA en tu servidor con Go oficial (huella verificada) y el
+#    resultado corre como usuario sin privilegios.
+#  - Nexora no incluye ese código en tu repositorio.
+#  - Si ya tenés la carpeta bilola_go_port en /root, usa esa en vez de descargar.
 # ==========================================================
 BH_SVC="${APP_ID}-bhttp"
 BH_UNIT="/etc/systemd/system/${BH_SVC}.service"
@@ -14,6 +16,9 @@ BH_BIN="${BH_DIR}/bilola-server"
 BH_GO="${BH_DIR}/go"
 BH_CONF="${DB_DIR}/bhttp.conf"
 BH_STAGE_DEFAULT="/root/bilola_go_port"
+BH_ZIP_URL="https://github.com/karl1999x/PandaScript/raw/refs/heads/main/SCRIPTS/btun-full-install.zip"
+BH_PINNED_FP="d2cf5ac6901e28469edc9fcfc2aec3bafe3f14bf16d93e4055b3fb8c05dfd4ad"   # código revisado (v1.0.44)
+BH_FETCH_DIR=""; BH_FETCH_TMP=""
 
 bh_installed()  { [[ -x "$BH_BIN" ]]; }
 bh_conf_get()   { grep -E "^$1=" "$BH_CONF" 2>/dev/null | cut -d= -f2-; }
@@ -47,6 +52,21 @@ bh_audit() {
 bh_fingerprint() {
     ( cd "$1" && find go.mod cmd/bilola-server internal/bhttp internal/xhttp -type f 2>/dev/null \
         | LC_ALL=C sort | xargs sha256sum | sha256sum | awk '{print $1}' )
+}
+
+# Descarga el paquete y deja el código en $BH_FETCH_DIR
+bh_fetch_source() {
+    local tmp
+    apt-get install -y curl unzip >/dev/null 2>&1
+    tmp=$(mktemp -d)
+    echo " Descargando el paquete (unos 17 MB)..."
+    curl -fsSL --max-time 300 -o "$tmp/pkg.zip" "$BH_ZIP_URL" \
+        || { err "No pude descargar el paquete"; rm -rf "$tmp"; return 1; }
+    unzip -q -o "$tmp/pkg.zip" 'BTUN/sources/bilola_go_port/*' -d "$tmp/x" 2>/dev/null
+    if [[ ! -f "$tmp/x/BTUN/sources/bilola_go_port/go.mod" ]]; then
+        err "El paquete no trae el código esperado"; rm -rf "$tmp"; return 1
+    fi
+    BH_FETCH_DIR="$tmp/x/BTUN/sources/bilola_go_port"; BH_FETCH_TMP="$tmp"
 }
 
 # Elige el Go a descargar desde el JSON oficial:  bh_go_pick <json> <arch> → "archivo sha256"
@@ -143,55 +163,79 @@ WantedBy=multi-user.target
 EOF
 }
 
-# Puertos y destino SSH (también sirve para cambiarlos después)
-bh_configure() {
+# Escribe el servicio, lo inicia y guarda la configuración (sin preguntar nada)
+bh_apply() {   # bh_apply <puertos> <puerto_ssh>
+    local p
+    bh_write_unit "$1" "$2"
+    printf 'ports=%s\nssh=%s\n' "$1" "$2" > "$BH_CONF"
+    systemctl daemon-reload
+    systemctl enable "$BH_SVC" >/dev/null 2>&1
+    systemctl restart "$BH_SVC"
+    for p in $1; do open_port "$p"; done
+    if svc_on "$BH_SVC"; then ok "BHTTP activo en: $1  →  SSH 127.0.0.1:$2"
+    else err "No pudo iniciar. Revisá: journalctl -u $BH_SVC -n 20"; fi
+}
+
+# Pregunta puertos y destino; devuelve los valores en BH_ASK_PORTS / BH_ASK_SSH
+bh_ask() {
     local ports ssh p c
     ssh=$(bh_conf_get ssh); ssh=${ssh:-$(bh_ssh_port)}
     ports=$(bh_conf_get ports); ports=${ports:-8080}
     read -rp " Puertos de BHTTP, separados por espacio [$ports]: " c; ports=${c:-$ports}
     for p in $ports; do
-        if ! { is_num "$p" && (( p >= 1 && p <= 65535 )); }; then err "Puerto inválido: $p"; pause; return 1; fi
-        if port_busy "$p" bilola; then err "El puerto $p ya está en uso"; pause; return 1; fi
+        if ! { is_num "$p" && (( p >= 1 && p <= 65535 )); }; then err "Puerto inválido: $p"; return 1; fi
+        if port_busy "$p" bilola; then err "El puerto $p ya está en uso"; return 1; fi
     done
-    read -rp " Puerto SSH de destino [$ssh]: " c; ssh=${c:-$ssh}
-    if ! { is_num "$ssh" && (( ssh >= 1 && ssh <= 65535 )); }; then err "Puerto SSH inválido"; pause; return 1; fi
+    read -rp " ¿A qué puerto SSH se redirige el tráfico? [$ssh]: " c; ssh=${c:-$ssh}
+    if ! { is_num "$ssh" && (( ssh >= 1 && ssh <= 65535 )); }; then err "Puerto SSH inválido"; return 1; fi
+    BH_ASK_PORTS="$ports"; BH_ASK_SSH="$ssh"
+}
 
-    bh_write_unit "$ports" "$ssh"
-    printf 'ports=%s\nssh=%s\n' "$ports" "$ssh" > "$BH_CONF"
-    systemctl daemon-reload
-    systemctl enable "$BH_SVC" >/dev/null 2>&1
-    systemctl restart "$BH_SVC"
-    for p in $ports; do open_port "$p"; done
-    if svc_on "$BH_SVC"; then ok "BHTTP activo en: $ports  →  SSH 127.0.0.1:$ssh"
-    else err "No pudo iniciar. Revisa: journalctl -u $BH_SVC -n 20"; fi
-    pause
+bh_configure() {   # cambiar puertos o destino
+    bh_ask || { pause; return 1; }
+    bh_apply "$BH_ASK_PORTS" "$BH_ASK_SSH"; pause
 }
 
 bhttp_install() {
     header "BHTTP · INSTALAR"
-    local stage c fp
+    local stage c fp fetched=0
     if bh_installed; then
         read -rp " Ya está compilado. ¿Recompilar desde el código? [s/N]: " c
         if [[ ! "$c" =~ ^[sS]$ ]]; then bh_configure; return; fi
     fi
 
-    echo -e " ${DIM}Hace falta la carpeta del código fuente (bilola_go_port) en el VPS.${W}"
-    read -rp " Carpeta del código [$BH_STAGE_DEFAULT]: " stage; stage=${stage:-$BH_STAGE_DEFAULT}
-    if [[ ! -f "$stage/go.mod" || ! -d "$stage/cmd/bilola-server" ]]; then
-        err "No encuentro go.mod y cmd/bilola-server en $stage"; pause; return
-    fi
+    bh_ask || { pause; return; }
     echo
+
+    if [[ -d "$BH_STAGE_DEFAULT" ]]; then
+        stage="$BH_STAGE_DEFAULT"; echo " Usando el código local: $stage"
+    else
+        bh_fetch_source || { pause; return; }
+        stage="$BH_FETCH_DIR"; fetched=1
+    fi
+    if [[ ! -f "$stage/go.mod" || ! -d "$stage/cmd/bilola-server" ]]; then
+        err "No encuentro go.mod y cmd/bilola-server en $stage"
+        [[ $fetched -eq 1 ]] && rm -rf "$BH_FETCH_TMP"; pause; return
+    fi
+
     if ! bh_audit "$stage"; then
         read -rp " ¿Continuar igual? [s/N]: " c
-        [[ "$c" =~ ^[sS]$ ]] || { warn "Cancelado"; pause; return; }
+        [[ "$c" =~ ^[sS]$ ]] || { warn "Cancelado"; [[ $fetched -eq 1 ]] && rm -rf "$BH_FETCH_TMP"; pause; return; }
     fi
     fp=$(bh_fingerprint "$stage")
-    echo -e " Huella del código a compilar:"; echo -e " ${Y}${fp}${W}"
-    read -rp " ¿Compilar este código? [s/N]: " c
-    [[ "$c" =~ ^[sS]$ ]] || { warn "Cancelado"; pause; return; }
+    if [[ "$fp" == "$BH_PINNED_FP" ]]; then
+        ok "El código es idéntico al que revisamos"
+    else
+        warn "El código CAMBIÓ respecto de la versión que revisamos."
+        echo -e " Obtenida : ${Y}${fp}${W}"
+        echo -e " Revisada : ${Y}${BH_PINNED_FP}${W}"
+        read -rp " ¿Compilar igual? [s/N]: " c
+        [[ "$c" =~ ^[sS]$ ]] || { warn "Cancelado"; [[ $fetched -eq 1 ]] && rm -rf "$BH_FETCH_TMP"; pause; return; }
+    fi
 
     mkdir -p "$BH_DIR"; rm -rf "$BH_SRC"; mkdir -p "$BH_SRC"
     cp -r "$stage"/. "$BH_SRC"/
+    [[ $fetched -eq 1 ]] && rm -rf "$BH_FETCH_TMP"
     chown -R root:root "$BH_DIR"; chmod 755 "$BH_DIR"
 
     bh_get_go || { rm -rf "$BH_SRC"; pause; return; }
@@ -204,7 +248,8 @@ bhttp_install() {
     rm -rf "$BH_GO"; ok "Go se eliminó (ya no hace falta para correr el programa)"
     echo "$fp" > "$BH_DIR/source.sha256"
     echo
-    bh_configure
+    bh_apply "$BH_ASK_PORTS" "$BH_ASK_SSH"
+    pause
 }
 
 bhttp_logs() {
