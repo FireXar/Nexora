@@ -18,18 +18,24 @@ done
 mkdir -p "$DB_DIR"; touch "$USERS_DB" "$XRAY_DB"
 
 # Modo no interactivo (lo usa el cron)
-if [[ "$1" == "--clean" ]]; then
-    user_cleanup
-    declare -F xray_cleanup >/dev/null && xray_cleanup
-    exit 0
-fi
+case "$1" in
+    --clean)
+        user_cleanup
+        declare -F xray_cleanup >/dev/null && xray_cleanup
+        exit 0;;
+    --tick)     # cada minuto: temporales + limitador
+        user_tick
+        exit 0;;
+esac
+
+ensure_cron
 
 main_menu() {
     local o
     while true; do
         banner
         draw_dashboard
-        item 1 "Usuarios SSH"  "crear · renovar · límites"
+        item 1 "Usuarios ($(user_mode | tr '[:lower:]' '[:upper:]'))" "SSH · HWID · TOKEN"
         item 2 "Servicios"     "Dropbear · SSL · WebSocket"
         item 3 "Xray (VLESS)"  "clientes y enlaces"
         item 4 "Sistema"       "info · BBR · swap · updates"

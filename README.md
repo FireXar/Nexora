@@ -16,7 +16,7 @@ nexora
 
 | Menú | Función |
 |---|---|
-| Usuarios SSH | Crear, eliminar, renovar, límite, bloquear, listar, conectados, limpiar expirados |
+| Usuarios | Tres modos (SSH, HWID y TOKEN): crear, crear temporal (minutos), eliminar, renovar, editar, bloquear, listar, conectados, limitador de conexiones, borrar vencidos/todos, backup y restauración |
 | Servicios | Lista con estado [ON]/[OFF]: Ajustes SSH, Dropbear, Socks WS (Python), Stunnel SSL, Xray, BadVPN-UDPGW y Squid restringido. Cada uno con instalar, iniciar/detener, reiniciar y desinstalar |
 | Xray (VLESS) | Instala Xray con checksum verificado, clientes con vencimiento, enlaces `vless://` |
 | Panel | Cabecera con IP, RAM, disco, CPU, usuarios online, alertas de vencimiento y estado de servicios |
@@ -30,6 +30,21 @@ core/               config, interfaz y menús (usuarios, servicios, sistema)
 modules/            módulos que se cargan solos (xray.sh, ws-proxy.py, xray-cfg.py)
 NOTICE.md           software de terceros que se instala (no se redistribuye)
 ```
+
+## Modos de usuarios
+
+Se cambia desde **Usuarios → 13) Cambiar modo**. Los tres modos conviven: cada uno
+lista y gestiona solo sus cuentas.
+
+| Modo | Cuenta en el servidor | Contraseña |
+|---|---|---|
+| SSH | usuario elegido | la que pongas |
+| HWID | el HWID del dispositivo | el mismo HWID |
+| TOKEN | el token | una clave única para todos (opción 14) |
+
+En HWID y TOKEN el "nombre de cliente" es solo para identificarlo en el panel.
+El cron `nexora --tick` corre cada minuto: borra las cuentas temporales y
+aplica el limitador de conexiones si está activo.
 
 ## Configuración de marca
 

@@ -29,8 +29,11 @@ touch "$USERS_DB"
 grep -qx "/bin/false" /etc/shells || echo "/bin/false" >> /etc/shells
 ln -sf "$APP_DIR/core/menu.sh" "$BIN_LINK"
 
-# Limpieza diaria de usuarios expirados
-echo "0 0 * * * root $BIN_LINK --clean >/dev/null 2>&1" > "/etc/cron.d/${APP_ID}"
+# Limpieza diaria de expirados + tarea por minuto (temporales y limitador)
+cat > "/etc/cron.d/${APP_ID}" <<CRON
+0 0 * * * root $BIN_LINK --clean >/dev/null 2>&1
+* * * * * root $BIN_LINK --tick >/dev/null 2>&1
+CRON
 
 echo
 echo "✔ $APP_NAME instalado. Escribe:  $APP_ID"

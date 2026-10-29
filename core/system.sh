@@ -43,7 +43,10 @@ sys_update() {
 
 sys_cron() {
     header "LIMPIEZA AUTOMÁTICA"
-    echo "0 0 * * * root $BIN_LINK --clean >/dev/null 2>&1" > /etc/cron.d/${APP_ID}
+    {
+        echo "0 0 * * * root $BIN_LINK --clean >/dev/null 2>&1"
+        echo "* * * * * root $BIN_LINK --tick >/dev/null 2>&1"
+    } > "/etc/cron.d/${APP_ID}"
     ok "Los usuarios expirados se borrarán a diario a las 00:00"; pause
 }
 
