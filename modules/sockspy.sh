@@ -1,5 +1,12 @@
 #!/bin/bash
-# Módulo SOCKS adaptado para Nexora con soporte Python 2 y Python 3
+# Funciones de compatibilidad local
+print_center() {
+    echo -e "$2"
+}
+
+msg() {
+    echo -e "$2"
+}
 
 stop_all () {
     ck_py=$(lsof -V -i tcp -P -n | grep -v "ESTABLISHED" |grep -v "COMMAND"|grep "python")
