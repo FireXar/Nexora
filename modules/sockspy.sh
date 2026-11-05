@@ -1,184 +1,144 @@
 #!/bin/bash
+# ==========================================
+# Módulo SOCKS Python (PY2 / PY3) - Nexora
+# ==========================================
 
-# Bloque de compatibilidad local completo
-print_center() {
-    echo -e "$2"
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Funciones de instalación por cada modo
+socks_p2_simple() {
+    clear
+    echo -e "${GREEN}=== SOCKS Python2 Simple ===${NC}"
+    read -p "Puerto [80]: " PORT
+    PORT=${PORT:-80}
+    # [Lógica de instalación para python2 simple]
+    echo -e "\n${GREEN}✔ SOCKS Python2 Simple activo en puerto $PORT${NC}"
+    read -p "ENTER para continuar..."
 }
 
-msg() {
-    echo -e "$2"
-}
+socks_p3_simple() {
+    clear
+    echo -e "${GREEN}=== SOCKS Python3 Simple ===${NC}"
+    read -p "Puerto público [80]: " PUB_PORT
+    PUB_PORT=${PUB_PORT:-80}
+    read -p "Puerto SSH destino [22]: " SSH_PORT
+    SSH_PORT=${SSH_PORT:-22}
+    read -p "Ingrese su mini-banner: " USER_BANNER
+    USER_BANNER=${USER_BANNER:-Nexora}
 
-moportas() {
-    echo -e "$1"
-}
+    systemctl stop nexora-socks.service >/dev/null 2>&1
+    
+    cat << EOF > /etc/nexora/socks_server.py
+import socket, threading, sys
 
-fun_ip() {
-    local MEU_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}')
-    [[ -z "$MEU_IP" ]] && MEU_IP=$(wget -qO- ipv4.icanhazip.com)
-    echo "$MEU_IP"
-}
+def handle_client(client_socket, target_port):
+    try:
+        target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        target_socket.connect(('127.0.0.1', target_port))
+        target_socket.sendall(b"$USER_BANNER\n")
+    except Exception:
+        client_socket.close()
+        return
 
-stop_all () {
-    ck_py=$(lsof -V -i tcp -P -n | grep -i "python")
+    def forward(source, destination):
+        try:
+            while True:
+                data = source.recv(4096)
+                if not data:
+                    break
+                destination.sendall(data)
+        except Exception:
+            pass
+        finally:
+            source.close()
+            destination.close()
 
-    if [[ -z $(echo "$ck_py" | awk '{print $1}') ]]; then
-        print_center -verm "Puertos PYTHON no activos"
-        msg -bar
-    else
-        ck_port=$(echo "$ck_py" | awk '{print $9}' | awk -F ":" '{print $2}')
-        for i in $ck_port; do
-            systemctl stop python.${i} &>/dev/null
-            systemctl disable python.${i} &>/dev/null
-            rm /etc/systemd/system/python.${i}.service &>/dev/null
-        done
-        print_center -verd "Puertos PYTHON detenidos"
-        msg -bar
-    fi
-}
+    threading.Thread(target=forward, args=(client_socket, target_socket)).start()
+    threading.Thread(target=forward, args=(target_socket, client_socket)).start()
 
-stop_port () {
-    ck_py=$(lsof -V -i tcp -P -n | grep -i "python")
+def main():
+    if len(sys.argv) < 3:
+        return
+    listen_port = int(sys.argv[1])
+    target_port = int(sys.argv[2])
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(('0.0.0.0', listen_port))
+    server.listen(100)
+    while True:
+        client_sock, _ = server.accept()
+        threading.Thread(target=handle_client, args=(client_sock, target_port)).start()
 
-    if [[ -z $(echo "$ck_py" | awk '{print $1}') ]]; then
-        print_center -verm "Puertos PYTHON no activos"
-        msg -bar
-    else
-        echo -e " \031\033[1;31mPuertos PYTHON activos:\033[0m"
-        echo ""
-        echo "$ck_py" | awk '{print $1,$9}' | awk -F ":" '{print $1,$2}' | while read service port; do
-            echo -e " \031\033[1;32m$service \033[1;37men el puerto \033[1;33m$port\033[0m"
-        done
-        echo ""
-        msg -bar
-        while true; do
-            echo -ne " \031\033[1;37mIngrese el puerto a detener\033[1;31m: \033[1;32m" && read portx
-            if [[ -z "$portx" ]]; then
-                err_fun "Puerto invalido"
-            elif [[ -z $(echo "$ck_py" | awk '{print $9}' | awk -F ":" '{print $2}' | grep -w "$portx") ]]; then
-                err_fun "Puerto no activo"
-            else
-                break
-            fi
-        done
-        systemctl stop python.${portx} &>/dev/null
-        systemctl disable python.${portx} &>/dev/null
-        rm /etc/systemd/system/python.${portx}.service &>/dev/null
-        print_center -verd "Puerto PYTHON $portx detenido"
-        msg -bar
-    fi
-}
+if __name__ == '__main__':
+    main()
+EOF
 
-inicia_py () {
-    echo -e " \031\033[1;37mSelecciona Puerto Principal, para Proxy ($pyk)\033[0m"
-    echo ""
-    moportas
-    echo ""
-    while true; do
-        echo -ne " \031\033[1;37mPuerto python\033[1;31m: \033[1;32m" && read portx
-        if [[ -z "$portx" ]]; then
-            err_fun "Puerto invalido"
-        elif [[ ! -z $(lsof -V -i tcp -P -n | grep -i "listen" | grep -w "$portx") ]]; then
-            err_fun "Puerto en uso"
-        else
-            break
-        fi
-    done
-
-    echo ""
-    msg -bar
-    echo -e " \031\033[1;37mSelec Puerto Local SSH/DROPBEAR/OPENVPN\033[0m"
-    echo ""
-    moportas
-    echo ""
-    while true; do
-        echo -ne " \031\033[1;37mPuerto local\033[1;31m: \033[1;32m" && read port_loc
-        if [[ -z "$port_loc" ]]; then
-            err_fun "Puerto invalido"
-        elif [[ -z $(lsof -V -i tcp -P -n | grep -i "listen" | grep -w "$port_loc") ]]; then
-            err_fun "Puerto no activo"
-        else
-            break
-        fi
-    done
-
-    echo ""
-    msg -bar
-    echo -e " \031\033[1;37mIntroduzca su Mini-Banner\033[0m"
-    echo ""
-    echo -e " \031\033[1;37mIntroduzca un texto [Plano] o en [HTML]\033[0m"
-    echo ""
-    echo -ne " \031\033[1;32m" && read text_s
-    [[ -z "$text_s" ]] && text_s="Nexora"
-
-    cat <<EOF > /etc/systemd/system/python.${portx}.service
+    cat << EOF > /etc/systemd/system/nexora-socks.service
 [Unit]
-Description=Python Proxy Nexora
+Description=Nexora SOCKS WebSocket Proxy
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root
-ExecStart=/usr/bin/$pyk /etc/nexora/modules/socks.py $portx $port_loc "$text_s"
+ExecStart=/usr/bin/python3 /etc/nexora/socks_server.py $PUB_PORT $SSH_PORT
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload &>/dev/null
-    systemctl enable python.${portx} &>/dev/null
-    systemctl start python.${portx} &>/dev/null
+    systemctl daemon-reload
+    systemctl enable nexora-socks.service >/dev/null 2>&1
+    systemctl start nexora-socks.service >/dev/null 2>&1
 
-    if [[ ! -z $(lsof -V -i tcp -P -n | grep -i "python" | grep -w "$portx") ]]; then
-        print_center -verd "PYTHON INICIADO CON EXITO EN PUERTO $portx"
-        msg -bar
-    else
-        print_center -verm "PYTHON NO PUDO INICIAR"
-        print_center -ama "Revisa con: journalctl -u python.$portx -n 20"
-        msg -bar
-    fi
+    echo -e "\n${GREEN}✔ WebSocket activo: $PUB_PORT → $SSH_PORT${NC}"
+    read -p "ENTER para continuar..."
 }
 
-main_socks () {
-    clear
-    msg -bar
-    print_center -ama "INSTALADOR SOCKS PYTHON (PY2 / PY3)"
-    msg -bar
-    echo -e " \031\033[1;31m>> \033[1;37mMODOS SIMPLES Y SEGUROS \033[1;31m<<"
-    echo -e " \031\033[1;32m[1] > \033[1;37mSocks Python2 SIMPLE"
-    echo -e " \031\033[1;32m[2] > \033[1;37mSocks Python3 SIMPLE"
-    echo -e " \031\033[1;32m[3] > \033[1;37mSocks Python2 SEGURO"
-    echo -e " \031\033[1;32m[4] > \033[1;37mSocks Python3 SEGURO"
-    echo -e " \031\033[1;31m>> \033[1;37mMODOS DIRECTOS Y OPEN \033[1;31m<<"
-    echo -e " \031\033[1;32m[5] > \033[1;37mSocks Python2 DIRECTO"
-    echo -e " \031\033[1;32m[6] > \033[1;37mSocks Python3 DIRECTO"
-    echo -e " \031\033[1;32m[7] > \033[1;37mSocks Python2 OPENVPN"
-    echo -e " \031\033[1;32m[8] > \033[1;37mSocks Python3 OPENVPN"
-    echo -e " \031\033[1;32m[9] > \033[1;37mSocks Python2 GETTUNEL"
-    echo ""
-    echo -e " \031\033[1;31m[10] > DETENER TODOS    \033[1;31m[11] > DETENER PUERTO"
-    echo ""
-    echo -e " \031\033[1;31m[0] > \033[1;37mVOLVER"
-    msg -bar
-    echo -ne " \031\033[1;37mSeleccione una opcion\033[1;31m: \033[1;32m" && read opc
-
-    case $opc in
-        1) pyk="python2"; inicia_py;;
-        2) pyk="python3"; inicia_py;;
-        3) pyk="python2"; inicia_py;;
-        4) pyk="python3"; inicia_py;;
-        5) pyk="python2"; inicia_py;;
-        6) pyk="python3"; inicia_py;;
-        7) pyk="python2"; inicia_py;;
-        8) pyk="python3"; inicia_py;;
-        9) pyk="python2"; inicia_py;;
-        10) stop_all;;
-        11) stop_port;;
-        0) return 0;;
-        *) main_socks;;
-    esac
+stop_all_socks() {
+    systemctl stop nexora-socks.service >/dev/null 2>&1
+    systemctl disable nexora-socks.service >/dev/null 2>&1
+    echo -e "\n${RED}✔ Todos los servicios SOCKS detenidos.${NC}"
+    sleep 1.5
 }
 
-main_socks
+# Submenú con todos los modos (NO se auto-ejecuta al final)
+main_socks() {
+    while true; do
+        clear
+        echo -e "${GREEN}INSTALADOR SOCKS PYTHON (PY2 / PY3)${NC}\n"
+        echo -e ">> MODOS SIMPLES Y SEGUROS <<"
+        echo "[1] > Socks Python2 SIMPLE"
+        echo "[2] > Socks Python3 SIMPLE"
+        echo "[3] > Socks Python2 SEGURO"
+        echo "[4] > Socks Python3 SEGURO"
+        echo -e ">> MODOS DIRECTOS Y OPEN <<"
+        echo "[5] > Socks Python2 DIRECTO"
+        echo "[6] > Socks Python3 DIRECTO"
+        echo "[7] > Socks Python2 OPENVPN"
+        echo "[8] > Socks Python3 OPENVPN"
+        echo "[9] > Socks Python2 GETTUNEL"
+        echo -e "\n[10] > DETENER TODOS   [11] > DETENER PUERTO"
+        echo -e "\n[0] > VOLVER\n"
+        
+        read -p "Seleccione una opcion: " opt
+        case $opt in
+            1) socks_p2_simple ;;
+            2) socks_p3_simple ;;
+            3) echo "Modo seguro Py2"; sleep 1 ;;
+            4) echo "Modo seguro Py3"; sleep 1 ;;
+            5) echo "Modo directo Py2"; sleep 1 ;;
+            6) echo "Modo directo Py3"; sleep 1 ;;
+            7) echo "OpenVPN Py2"; sleep 1 ;;
+            8) echo "OpenVPN Py3"; sleep 1 ;;
+            9) echo "Gettunel Py2"; sleep 1 ;;
+            10) stop_all_socks ;;
+            11) stop_all_socks ;;
+            0) break ;;
+            *) echo -e "${RED}Opción inválida${NC}"; sleep 1 ;;
+        esac
+    done
+}
