@@ -5,6 +5,8 @@
 svc_on() {
     # "<app>-ws" es el servicio de SOCKS PYTHON: activo si algún puerto está activo
     if [[ "$1" == "${APP_ID}-ws" ]] && declare -F sp_any_active >/dev/null; then sp_any_active; return; fi
+    # "<app>-udp" es PROTOCOLOS UDP: activo si alguno de sus servicios está activo
+    if [[ "$1" == "${APP_ID}-udp" ]] && declare -F udp_any_active >/dev/null; then udp_any_active; return; fi
     systemctl is-active --quiet "$1" 2>/dev/null
 }
 
@@ -160,6 +162,7 @@ squid|SQUID|squid|squid_menu
 hcr|HCR CUSTOM|hcr-server|hcr_menu
 bhttp|BHTTP TUNNEL|${APP_ID}-bhttp|bhttp_menu
 slowdns|SLOWDNS|${APP_ID}-slowdns|slowdns_menu
+udp|PROTOCOLOS UDP|${APP_ID}-udp|protocolsudp_menu
 EOF
 }
 
